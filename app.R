@@ -64,8 +64,9 @@ ui <- fluidPage(
    
     
     mainPanel(
-      plotOutput("distPlot", height = "500px"),
-      verbatimTextOutput("explain")
+      plotOutput("distPlot", height = "400px"),
+      htmlOutput("explain_text"),
+      verbatimTextOutput("explain_code")
     )
   )
 )
@@ -261,15 +262,35 @@ server <- function(input, output, session) {
   # -----------------------------
   # Explanation (unchanged)
   # -----------------------------
-  output$explain <- renderText({
-    
+  output$explain_text <- renderUI({
+    txt <- if (input$dist == "t") {
+      "<b><i>t</i> distribution</b>: emerges from drawing <i>n</i> samples from a normal 
+       distribution and standardizing sample means: 
+       <i>t</i> = x&#772; &frasl; (s &frasl; &radic;<i>n</i>), 
+       where x&#772; is the sample mean and <i>s</i> is the sample standard deviation.
+       The red line shows the theoretical <i>t</i> distribution for comparison.
+       As <i>n</i> increases, the <i>t</i> distribution approaches the standard normal (Z)."
+    } else if (input$dist == "f") {
+      "<b><i>F</i> distribution</b>: emerges from the ratio of variances of two independent 
+       normal samples: <i>F</i> = s&#8321;&sup2; &frasl; s&#8322;&sup2;, 
+       where s&#8321;&sup2; and s&#8322;&sup2; are the variances of each group.
+       Degrees of freedom: df&#8321; = n&#8321; &minus; 1 (numerator), 
+       df&#8322; = n&#8322; &minus; 1 (denominator).
+       The red line shows the theoretical <i>F</i> distribution for comparison.
+       Used extensively in ANOVA and regression to compare group variances."
+    } else {
+      "<b>&chi;&sup2; distribution</b>: emerges from summing squared standard normal variables.
+       If Z ~ N(0, 1), then &chi;&sup2;(<i>k</i>) = &sum;Z&sup2; over <i>k</i> independent draws.
+       The red line shows the theoretical &chi;&sup2; distribution for comparison.
+       Connects directly to variance estimation, goodness-of-fit, and contingency tables."
+    }
+    HTML(paste0("<p>", txt, "</p>"))
+  })
+  
+  output$explain_code <- renderText({
     if (input$dist == "t") {
       paste0(
-        "t distribution: emerges from drawing n samples from a normal distribution\n",
-        "and standardizing sample means: t = mean(x) / (sd(x) / sqrt(n)).\n",
-        "Red line shows the theoretical t distribution for comparison.\n",
-        "As n increases, the t distribution approaches the standard normal.\n\n",
-        "--- R code used to generate these t values ---\n",
+        "# R code used to generate these t values\n",
         "n      <- ", input$n_t, "   # sample size\n",
         "n_sims <- ", if (!is.null(input$n_exp_t)) input$n_exp_t else 1000, "   # number of simulations\n",
         "t_vals <- replicate(n_sims, {\n",
@@ -277,14 +298,9 @@ server <- function(input, output, session) {
         "  mean(x) / (sd(x) / sqrt(n))\n",
         "})\n"
       )
-      
     } else if (input$dist == "f") {
       paste0(
-        "F distribution: emerges from the ratio of variances of two independent normal samples.\n",
-        "Degrees of freedom: df1 = n1-1 (numerator), df2 = n2-1 (denominator).\n",
-        "Red line shows the theoretical F distribution for comparison.\n",
-        "Used extensively in ANOVA and regression to compare group variances.\n\n",
-        "--- R code used to generate these F values ---\n",
+        "# R code used to generate these F values\n",
         "n1     <- ", input$n1_f, "   # sample size group 1\n",
         "n2     <- ", input$n2_f, "   # sample size group 2\n",
         "n_sims <- ", if (!is.null(input$n_exp_f)) input$n_exp_f else 1000, "   # number of simulations\n",
@@ -294,14 +310,9 @@ server <- function(input, output, session) {
         "  var(x1) / var(x2)\n",
         "})\n"
       )
-      
     } else {
       paste0(
-        "Chi-square distribution: emerges from summing squared standard normal variables.\n",
-        "If Z ~ N(0,1), then chi-sq(k) = sum(Z^2) over k independent draws.\n",
-        "Red line shows the theoretical chi-square distribution for comparison.\n",
-        "Connects directly to variance estimation, goodness-of-fit, and contingency tables.\n\n",
-        "--- R code used to generate these chi-square values ---\n",
+        "# R code used to generate these chi-square values\n",
         "k      <- ", input$k_chi, "   # degrees of freedom\n",
         "n_sims <- ", if (!is.null(input$n_exp_chi)) input$n_exp_chi else 1000, "   # number of simulations\n",
         "chi_vals <- replicate(n_sims, {\n",
