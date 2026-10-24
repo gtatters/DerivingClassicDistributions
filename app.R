@@ -9,6 +9,26 @@
 #shinylive::export(appdir = "../DerivingClassicDistributions/", destdir = "docs")
 #httpuv::runStaticServer("docs/", port = 8008)
 
+# ---------------------------------------------------------
+# Safari-safe plotting
+# Draws a base-R plot as a PNG image. Stand-in for renderPlot(), which
+# currently fails in Safari under Shinylive. Use with imageOutput().
+# ---------------------------------------------------------
+render_base <- function(id, session, draw) {
+  renderImage({
+    cd <- session$clientData
+    w  <- cd[[paste0("output_", id, "_width")]]
+    h  <- cd[[paste0("output_", id, "_height")]]
+    req(w > 0, h > 0)
+    pr <- cd$pixelratio
+    if (is.null(pr)) pr <- 1
+    f <- tempfile(fileext = ".png")
+    png(f, width = w * pr, height = h * pr, res = 72 * pr)
+    tryCatch(draw(), finally = dev.off())
+    list(src = f, contentType = "image/png", width = w, height = h)
+  }, deleteFile = TRUE)
+}
+
 ui <- fluidPage(
   
   tags$head(
@@ -56,15 +76,13 @@ ui <- fluidPage(
       helpText("_______________________________"),
       helpText("Glenn Tattersall, PhD"),
       helpText("For use in BIOL 3P96 - Biostatistics"),
-
-      br(),
+      br()
+    ),
     
-      ),
     
-   
     
     mainPanel(
-      plotOutput("distPlot", height = "400px"),
+      imageOutput("distPlot", height = "400px"),
       htmlOutput("explain_text"),
       verbatimTextOutput("explain_code")
     )
@@ -175,7 +193,7 @@ server <- function(input, output, session) {
   # -----------------------------
   # Main plot
   # -----------------------------
-  output$distPlot <- renderPlot({
+  output$distPlot <- render_base("distPlot", session, function() {
     
     if (input$dist == "t") {
       
@@ -210,24 +228,38 @@ server <- function(input, output, session) {
       df1       <- input$n1_f - 1
       df2       <- input$n2_f - 1
       
-      breaks <- pretty(range(c(f_vals, prev_vals), na.rm = TRUE), n = 30)
-      h_curr <- hist(f_vals, breaks = breaks, plot = FALSE)
-      ylim   <- c(0, max(h_curr$density) * 1.15)
+      # Fixed 0-10 axis with bins of width 0.25. Very large F values (common
+      # when sample size 2 is small) are left off the axis instead of
+      # stretching the bins, and the bars are scaled by ALL simulations so
+      # they still line up with the red theoretical curve.
+      xmax   <- 10
+      breaks <- seq(0, xmax, by = 0.25)
+      bin_density <- function(v) {
+        h <- hist(v[v <= xmax], breaks = breaks, plot = FALSE)
+        h$density <- h$counts / (length(v) * diff(breaks)[1])
+        h
+      }
+      h_curr <- bin_density(f_vals)
+      ylim   <- c(0, max(c(h_curr$density, 0.05)) * 1.15)   # 0.05 floor avoids a zero-height axis
       
       title_txt <- paste("F distribution (df1 =", df1, ", df2 =", df2, ")")
       
+      plot(NULL, xlim = c(0, xmax), ylim = ylim,
+           main = title_txt, xlab = "F statistic", ylab = "Density")
       if (!is.null(prev_vals)) {
-        hist(prev_vals, probability = TRUE, breaks = breaks,
-             col = rgb(0.7, 0.7, 0.7, 0.4), border = NA,
-             main = title_txt, xlab = "F statistic",
-             xlim = c(0, 10), ylim = ylim)
-        hist(f_vals, probability = TRUE, breaks = breaks,
-             col = "#569BBD", border = "black", add = TRUE, xlim = c(0, 10))
-      } else {
-        hist(f_vals, probability = TRUE, breaks = breaks,
-             col = "#569BBD", border = "black",
-             main = title_txt, xlab = "F statistic",
-             xlim = c(0, 10), ylim = ylim)
+        plot(bin_density(prev_vals), freq = FALSE, add = TRUE,
+             col = rgb(0.7, 0.7, 0.7, 0.4), border = NA)
+      }
+      plot(h_curr, freq = FALSE, add = TRUE,
+           col = "#569BBD", border = "black")
+      
+      # Say how many values fell beyond the axis
+      n_off <- sum(f_vals > xmax)
+      if (n_off > 0) {
+        mtext(paste0(n_off, " of ", length(f_vals), " values (",
+                     round(100 * n_off / length(f_vals), 1),
+                     "%) are above ", xmax, " and not shown"),
+              side = 3, line = 0.2, cex = 0.85, col = "grey40")
       }
       
       curve(df(x, df1 = df1, df2 = df2), add = TRUE, col = "red", lwd = 2)
